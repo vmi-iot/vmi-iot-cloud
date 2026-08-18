@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard VMI-IOT</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2c3e50; }
+        .controls { display: flex; gap: 15px; justify-content: center; margin-bottom: 30px; flex-wrap: wrap; }
+        input, select { padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; width: 200px; }
+        button { padding: 12px 25px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: bold; }
+        .chart-container { position: relative; height: 400px; width: 100%; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 Monitoramento VMI-IOT</h1>
+    <div class="controls">
+        <input type="text" id="machineId" value="MACH_01" placeholder="ID da Máquina">
+        <input type="text" id="tagName" value="QOP_AV_CYCLES" placeholder="Nome da Tag">
+        <button onclick="loadData()">Atualizar Gráfico</button>
+    </div>
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
+</div>
+
+<script>
+    // URL automática: funciona local ou na nuvem
+    const API_URL = window.location.origin; 
+    let myChart = null;
+
+    async function loadData() {
+        const machineId = document.getElementById('machineId').value;
+        const tag = document.getElementById('tagName').value;
+
+        try {
+            const response = await fetch(`${API_URL}/api/history/${machineId}?tag=${tag}`);
+            const json = await response.json();
+            const data = json.data.reverse(); // Mais antigo para mais novo
+
+            const labels = data.map(item => new Date(item.time.replace(',', '.')).toLocaleTimeString());
+            const values = data.map(item => item.value);
+
+            if (myChart) {
+                myChart.data.labels = labels;
+                myChart.data.datasets[0].data = values;
+                myChart.update();
+            } else {
+                const ctx = document.getElementById('myChart').getContext('2d');
+                myChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: tag,
+                            data: values,
+                            borderColor: 'rgb(75, 192, 192)',
+                            tension: 0.3
+                        }]
+                    }
+                });
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Erro ao carregar dados. Verifique o console (F12).");
+        }
+    }
+</script>
+</body>
+</html>
