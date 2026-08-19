@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard VMI-IOT</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --text: #1e293b; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: var(--card); padding: 24px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        h1 { text-align: center; margin-bottom: 24px; font-size: 1.8rem; }
+        .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.9rem; }
+        select, button { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 1rem; background: #fff; }
+        button { background: var(--primary); color: white; border: none; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+        button:hover { background: #1d4ed8; }
+        .chart-container { position: relative; height: 400px; width: 100%; margin-top: 16px; }
+        .status { text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748b; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 Monitoramento VMI-IOT</h1>
+    <div class="controls">
+        <div>
+            <label for="machineId">Máquina</label>
+            <select id="machineId"></select>
+        </div>
+        <div>
+            <label for="tagName">Tag / Variável</label>
+            <select id="tagName"></select>
+        </div>
+        <div>
+            <label>&nbsp;</label>
+            <button onclick="loadData()">🔄 Atualizar Gráfico</button>
+        </div>
+    </div>
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
+    <div class="status" id="statusMsg">Aguardando atualização...</div>
+</div>
+
+<script>
+    // Configuração editável de Máquinas e Tags
+    const APP_CONFIG = {
+        machines: ['MACH_01', 'MACH_02', 'MACH_03'],
+        tags: ['QOP_AV_CYCLES', 'QOP_AV_HOURS', 'AUX_AV_CUSH_GUM_TEMP', 'QOP_ERROR_MESSAGE', '_IO_EM_DI_00', 'VMI_BHV_TEST']
+    };
+
+    const API_URL = window.location.origin;
+    let myChart = null;
+
+    // Popula os dropdowns
+    function initDropdowns() {
+        const machSelect = document.getElementById('machineId');
+        const tagSelect = document.getElementById('tagName');
+        
+        APP_CONFIG.machines.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m; opt.textContent = m;
+            machSelect.appendChild(opt);
+        });
+
+        APP_CONFIG.tags.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t; opt.textContent = t;
+            tagSelect.appendChild(opt);
+        });
+    }
+
+    async function loadData() {
+        const machineId = document.getElementById('machineId').value;
+        const tag = document.getElementById('tagName').value;
+        const statusMsg = document.getElementById('statusMsg');
+        
+        statusMsg.textContent = '⏳ Buscando dados...';
+        statusMsg.style.color = '#64748b';
+
+        try {
+            const response = await fetch(`${API_URL}/api/history/${machineId}?tag=${tag}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const json = await response.json();
+            const data = json.data.reverse(); // Mais antigo → mais novo
+
+            if (data.length === 0) {
+                statusMsg.textContent = '⚠️ Nenhum dado encontrado para esta tag.';
+                statusMsg.style.color = '#d97706';
+                return;
+            }
+
+            const labels = data.map(item => new Date(item.time));
+            const values = data.map(item => item.value);
+
+            if (myChart) {
+                myChart.data.labels = labels;
+                myChart.data.datasets[0].data = values;
+                myChart.update();
+            } else {
+                const ctx = document.getElementById('myChart').getContext('2d');
+                myChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: tag,
+                            data: values,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            tension: 0.3,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: true, position: 'top' },
+                            tooltip: { mode: 'index', intersect: false }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'minute',
+                                    displayFormats: { minute: 'HH:mm:ss' },
+                                    tooltipFormat: 'HH:mm:ss'
+                                },
+                                title: { display: true, text: 'Horário' }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Valor' }
+                            }
+                        }
+                    }
+                });
+            }
+            statusMsg.textContent = `✅ ${data.length} pontos carregados. Atualiza a cada 30s.`;
+            statusMsg.style.color = '#16a34a';
+        } catch (error) {
+            console.error(error);
+            statusMsg.textContent = `❌ Erro: ${error.message}`;
+            statusMsg.style.color = '#dc2626';
+        }
+    }
+
+    // Inicializa e carrega dados automaticamente
+    window.onload = () => {
+        initDropdowns();
+        loadData();
+    };
+</script>
+</body>
+</html>
